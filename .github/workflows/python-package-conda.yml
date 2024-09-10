@@ -1,34 +1,49 @@
-name: Python Package using Conda
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+import requests
+from bs4 import BeautifulSoup
 
-on: [push]
+# Fungsi untuk mendapatkan informasi WHOIS dari whois.com
+async def whois_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    domain = ' '.join(context.args)
+    if not domain:
+        await update.message.reply_text("Harap berikan nama domain setelah perintah /whois.")
+        return
 
-jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 5
+    try:
+        # URL WHOIS dengan domain yang diberikan
+        url = f"https://www.whois.com/whois/{domain}"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
-      with:
-        python-version: '3.10'
-    - name: Add conda to system path
-      run: |
-        # $CONDA is an environment variable pointing to the root of the miniconda directory
-        echo $CONDA/bin >> $GITHUB_PATH
-    - name: Install dependencies
-      run: |
-        conda env update --file environment.yml --name base
-    - name: Lint with flake8
-      run: |
-        conda install flake8
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Test with pytest
-      run: |
-        conda install pytest
-        pytest
+        # Mencari elemen <pre> dengan kelas 'df-raw' untuk data mentah WHOIS
+        whois_raw = soup.find('pre', class_='df-raw')
+        
+        if not whois_raw:
+            await update.message.reply_text("Tidak dapat menemukan informasi WHOIS untuk domain ini.")
+            return
+
+        # Mengambil teks dari elemen <pre>
+        whois_data = whois_raw.get_text(strip=True)
+
+        # Format teks menjadi lebih mudah dibaca
+        response_text = "Informasi WHOIS:\n" + whois_data
+
+        # Kirim hasil ke pengguna
+        await update.message.reply_text(response_text if response_text else "Informasi tidak ditemukan.")
+
+    except Exception as e:
+        await update.message.reply_text(f"Terjadi kesalahan: {e}")
+
+def main() -> None:
+    # Token dari BotFather
+    application = Application.builder().token("7015019173:AAHWOhT_pb3sFeV-wMLp33ECB4zJmV1n818").build()
+
+    # Handler untuk perintah /whois
+    application.add_handler(CommandHandler("whois", whois_info))
+
+    # Mulai bot
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
